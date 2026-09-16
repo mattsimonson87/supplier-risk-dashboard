@@ -6,9 +6,13 @@ decision support using R, Shiny, Plotly, and SQL.
 
 ## Project Objective
 
-This project will estimate the probability of a future supplier disruption
-and combine that probability with operational impact factors to prioritize
-supplier and material risks for mitigation.
+This project will predict the probability that a supplier-material
+relationship experiences a late or incomplete delivery within the next
+30 days.
+
+The predicted probability will be combined with operational impact factors,
+including inventory coverage, material criticality, expected demand, and
+sourcing alternatives, to prioritize risks for mitigation.
 
 ## Planned Capabilities
 
