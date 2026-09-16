@@ -37,8 +37,17 @@ For each eligible purchase-order line:
 - The late-delivery indicator equals 0 when the actual delivery date is no
   more than 7 calendar days after the promised delivery date.
 
-The supplier-material target equals 1 when at least one eligible
-purchase-order line is classified as late. Otherwise, the target equals 0.
+The supplier-material target is based on the proportion of quantity due
+during the prediction window that arrives more than 7 calendar days after
+its promised delivery date.
+
+The late quantity rate is calculated as:
+
+late quantity rate = quantity delivered more than 7 calendar days late /
+total quantity due during the 30-day prediction window
+
+The supplier-material target equals 1 when the late quantity rate is greater
+than 20 percent. Otherwise, the target equals 0.
 
 Supplier-material relationships without an expected delivery during the
 30-day prediction window are not included in that scoring period.
