@@ -1,0 +1,37 @@
+# R session files
+.Rhistory
+.RData
+.Ruserdata
+.Rproj.user/
+
+# Credentials and environment variables
+.Renviron
+.env
+*.pem
+*.key
+
+# Positron and editor settings
+.positron/
+.vscode/
+
+# Generated data
+data/raw/*
+data/processed/*
+
+# Preserve empty data directories
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+
+# Generated model files
+models/*
+
+# Preserve empty model directory
+!models/.gitkeep
+
+# Logs and temporary files
+*.log
+*.tmp
+
+# Operating-system fil*s
+.DS_Store
+Thumbs.db
