@@ -16,7 +16,32 @@ One supplier-material relationship evaluated at a specific monthly scoring date.
 
 ## Prediction Target
 
-Predict whether an open or expected delivery for a supplier-material relationship will be late or incomplete during the 30 days following the scoring date.
+Predict whether an expected delivery for a supplier-material relationship
+will arrive more than 7 calendar days after its promised delivery date during
+the 30 days following the scoring date.
+
+All suppliers are assumed to eventually provide the full ordered quantity.
+Partial and incomplete deliveries are outside the scope of the initial
+project version.
+
+## Target Definition
+
+A supplier-material relationship is eligible for scoring when at least one
+open purchase-order line has a promised delivery date within the 30 days
+following the scoring date.
+
+For each eligible purchase-order line:
+
+- The late-delivery indicator equals 1 when the actual delivery date is more
+  than 7 calendar days after the promised delivery date.
+- The late-delivery indicator equals 0 when the actual delivery date is no
+  more than 7 calendar days after the promised delivery date.
+
+The supplier-material target equals 1 when at least one eligible
+purchase-order line is classified as late. Otherwise, the target equals 0.
+
+Supplier-material relationships without an expected delivery during the
+30-day prediction window are not included in that scoring period.
 
 ## Prediction Timing
 

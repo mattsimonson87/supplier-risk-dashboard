@@ -7,8 +7,8 @@ decision support using R, Shiny, Plotly, and SQL.
 ## Project Objective
 
 This project will predict the probability that a supplier-material
-relationship experiences a late or incomplete delivery within the next
-30 days.
+relationship experiences a delivery more than 7 calendar days late within
+the next 30 days.
 
 The predicted probability will be combined with operational impact factors,
 including inventory coverage, material criticality, expected demand, and
