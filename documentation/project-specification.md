@@ -84,8 +84,8 @@ Models will be evaluated using an out-of-time validation strategy.
 
 ## Data Approach
 
-All supplier, material, purchase order, delivery, quality, inventory, and
-demand data will be synthetically generated.
+All supplier, material, purchase order, delivery, inventory, and demand data
+will be synthetically generated.
 
 No employer, client, or prospective-employer data or proprietary logic will
 be used.
@@ -97,7 +97,6 @@ The first version will include:
 - Supplier master data
 - Material master data
 - Purchase order and delivery history
-- Supplier quality events
 - Monthly inventory and demand snapshots
 - Time-aware supplier performance features
 - Predictive model evaluation
@@ -117,13 +116,8 @@ Planned fields:
 - `supplier_tier`: Strategic classification such as Tier 1, Tier 2, or Tier 3
 - `standard_lead_time_days`: Typical number of calendar days between order
   placement and promised delivery
-- `capacity_utilization`: Estimated proportion of the supplier's available
-  production capacity currently in use
 - `baseline_reliability`: Underlying synthetic tendency to deliver orders
   on time
-- `financial_risk_level`: Synthetic categorical indicator of financial risk
-- `regional_disruption_exposure`: Synthetic measure of exposure to regional
-  transportation or operational disruptions
 - `active_flag`: Indicates whether the supplier is currently active
 
 The supplier master will contain only fictional suppliers and synthetically
@@ -205,6 +199,101 @@ delivery performance across supplier-material relationships. It will not be
 provided directly to the predictive model because it represents an
 unobservable synthetic characteristic rather than information available to
 a supply chain analyst.
+
+### Purchase-Order and Delivery History
+
+The purchase-order and delivery history table will contain one row per
+purchase-order line.
+
+Planned fields:
+
+- `purchase_order_line_id`: Unique identifier for the purchase-order line
+- `purchase_order_id`: Identifier shared by all lines belonging to the same
+  purchase order
+- `supplier_material_id`: Identifier linking the order line to an approved
+  supplier-material relationship
+- `supplier_id`: Supplier identifier included for validation and convenient
+  analysis
+- `material_id`: Material identifier included for validation and convenient
+  analysis
+- `order_date`: Date on which the purchase order was placed
+- `promised_delivery_date`: Date on which the supplier committed to deliver
+  the order
+- `actual_delivery_date`: Date on which the full ordered quantity was
+  delivered
+- `ordered_quantity`: Number of units ordered
+- `unit_price`: Synthetic negotiated price per unit at the time of the order
+- `order_value`: Ordered quantity multiplied by unit price
+- `late_days`: Number of calendar days between the promised and actual
+  delivery dates, with early deliveries represented by negative values
+- `late_delivery_flag`: Indicates whether the delivery occurred more than
+  7 calendar days after the promised delivery date
+
+All purchase-order lines will eventually be delivered in full. Partial
+deliveries, cancellations, and undelivered orders are outside the scope of
+the initial project version.
+
+The promised delivery date will be based primarily on the order date and the
+quoted lead time for the supplier-material relationship.
+
+Synthetic delivery performance will vary based on hidden supplier and
+supplier-material reliability factors, order size relative to the standard
+order quantity, seasonal patterns, recent order volume, and random variation.
+
+The hidden reliability factors will be used only to generate synthetic
+delivery outcomes and will not be provided directly to the predictive model.
+
+### Monthly Inventory and Demand Snapshot
+
+The monthly inventory and demand snapshot table will contain one row per
+material and monthly scoring date.
+
+Planned fields:
+
+- `snapshot_id`: Unique identifier for the material and scoring-date
+  combination
+- `scoring_date`: Monthly date on which inventory exposure and supplier risk
+  are evaluated
+- `material_id`: Material identifier linked to the material master
+- `on_hand_quantity`: Usable inventory available on the scoring date
+- `open_order_quantity`: Quantity already ordered but not yet delivered as
+  of the scoring date
+- `average_daily_demand_30d`: Average daily demand during the 30 days
+  preceding the scoring date
+- `average_daily_demand_90d`: Average daily demand during the 90 days
+  preceding the scoring date
+- `forecast_demand_30d`: Expected material demand during the 30 days
+  following the scoring date
+- `demand_variability_90d`: Variability in daily demand during the 90 days
+  preceding the scoring date
+- `days_of_supply`: Number of days that current on-hand inventory is expected
+  to support based on recent average daily demand
+- `projected_inventory_30d`: Estimated inventory remaining after expected
+  demand and scheduled deliveries during the next 30 days
+- `inventory_value`: On-hand quantity multiplied by the material's unit cost
+- `stockout_risk_flag`: Rule-based indicator showing whether projected
+  inventory is expected to fall below zero during the next 30 days
+
+The days-of-supply measure will be calculated as:
+
+days of supply = on-hand quantity / average daily demand during the prior
+30 days
+
+Materials with no recent demand will have a missing days-of-supply value
+rather than an infinite value. These materials will be retained and
+identified separately so that no recent demand is not confused with missing
+or invalid data.
+
+The projected inventory measure will be calculated as:
+
+projected inventory = on-hand quantity + expected receipts - forecast demand
+
+Only purchase orders expected to arrive by the end of the 30-day forecast
+window will be included in expected receipts.
+
+Inventory and demand fields will be used primarily to estimate the potential
+operational impact of a late delivery. They will not be assumed to cause a
+supplier to deliver late.
 
 ## Current Non-Goals
 
