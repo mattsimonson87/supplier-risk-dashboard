@@ -3,12 +3,12 @@
 ## Business Problem
 
 Supply chain teams need to identify which supplier-material relationships
-are most likely to experience a late or incomplete delivery during the next
+are most likely to experience a late delivery during the next
 30 days.
 
-Because not every delivery problem has the same operational consequence,
-teams must also determine which predicted disruptions would have the
-greatest business impact and require immediate mitigation.
+Because not every late delivery has the same operational consequence, teams
+must also determine which predicted delays would have the greatest business
+impact and require immediate mitigation.
 
 ## Unit of Analysis
 
@@ -67,7 +67,7 @@ mitigate first?
 
 The project will generate:
 
-- A predicted disruption probability
+- A predicted late-delivery probability
 - An operational impact score
 - An overall mitigation priority
 - The primary factors contributing to each prediction
@@ -102,6 +102,109 @@ The first version will include:
 - Time-aware supplier performance features
 - Predictive model evaluation
 - An interactive Shiny and Plotly application
+
+## Synthetic Data Tables
+
+### Supplier Master
+
+The supplier master will contain one row per supplier.
+
+Planned fields:
+
+- `supplier_id`: Unique synthetic supplier identifier
+- `supplier_name`: Fictional supplier name used in the application
+- `supplier_region`: Geographic region in which the supplier operates
+- `supplier_tier`: Strategic classification such as Tier 1, Tier 2, or Tier 3
+- `standard_lead_time_days`: Typical number of calendar days between order
+  placement and promised delivery
+- `capacity_utilization`: Estimated proportion of the supplier's available
+  production capacity currently in use
+- `baseline_reliability`: Underlying synthetic tendency to deliver orders
+  on time
+- `financial_risk_level`: Synthetic categorical indicator of financial risk
+- `regional_disruption_exposure`: Synthetic measure of exposure to regional
+  transportation or operational disruptions
+- `active_flag`: Indicates whether the supplier is currently active
+
+The supplier master will contain only fictional suppliers and synthetically
+generated attributes.
+
+### Material Master
+
+The material master will contain one row per material.
+
+Planned fields:
+
+- `material_id`: Unique synthetic material identifier
+- `material_name`: Fictional material name used in the application
+- `material_category`: Broad grouping such as electronics, mechanical,
+  packaging, or raw material
+- `material_criticality`: Operational importance classified as low, medium,
+  or high
+- `unit_cost`: Synthetic cost per unit
+- `average_daily_demand`: Typical number of units consumed per day
+- `demand_variability`: Synthetic measure of variation in daily demand
+- `safety_stock_days`: Target number of days of inventory maintained as
+  protection against uncertainty
+- `approved_supplier_count`: Number of suppliers approved to provide the
+  material
+- `active_flag`: Indicates whether the material is currently active
+
+A material may be associated with multiple approved suppliers. The actual
+supplier-material relationships will be stored separately rather than
+assigning a single supplier directly in the material master.
+
+### Supplier-Material Relationship
+
+The supplier-material relationship table will contain one row per approved
+supplier and material pairing.
+
+This table represents the many-to-many relationship between suppliers and
+materials. A supplier may provide multiple materials, and a material may be
+available from multiple approved suppliers.
+
+Planned fields:
+
+- `supplier_material_id`: Unique identifier for the supplier-material
+  relationship
+- `supplier_id`: Supplier identifier linked to the supplier master
+- `material_id`: Material identifier linked to the material master
+- `relationship_start_date`: Date on which the supplier became approved to
+  provide the material
+- `relationship_end_date`: Optional date on which the relationship became
+  inactive
+- `relationship_status`: Indicates whether the relationship is active,
+  suspended, or inactive
+- `quoted_lead_time_days`: Expected number of calendar days between order
+  placement and promised delivery for this specific supplier-material
+  relationship
+- `minimum_order_quantity`: Minimum quantity accepted for an individual
+  purchase order
+- `standard_order_quantity`: Typical quantity ordered from the supplier for
+  the material
+- `sourcing_allocation`: Expected proportion of the material's demand
+  allocated to this supplier
+- `preferred_supplier_flag`: Indicates whether the supplier is the preferred
+  source for the material
+- `supplier_priority_rank`: Supplier preference rank for the material, where
+  1 represents the first-choice supplier
+- `unit_price`: Synthetic negotiated price per unit for this supplier and
+  material combination
+- `relationship_risk_factor`: Latent synthetic factor used only when
+  generating delivery outcomes
+
+The combination of `supplier_id` and `material_id` must be unique in this
+table.
+
+The `sourcing_allocation` values for all active suppliers associated with a
+material should total approximately 1.0. A material with one active supplier
+will therefore have a sourcing allocation of 1.0.
+
+The `relationship_risk_factor` will help generate realistic differences in
+delivery performance across supplier-material relationships. It will not be
+provided directly to the predictive model because it represents an
+unobservable synthetic characteristic rather than information available to
+a supply chain analyst.
 
 ## Current Non-Goals
 
