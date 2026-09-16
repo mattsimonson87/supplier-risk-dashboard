@@ -116,12 +116,17 @@ Planned fields:
 - `supplier_tier`: Strategic classification such as Tier 1, Tier 2, or Tier 3
 - `standard_lead_time_days`: Typical number of calendar days between order
   placement and promised delivery
-- `baseline_reliability`: Underlying synthetic tendency to deliver orders
   on time
 - `active_flag`: Indicates whether the supplier is currently active
 
-The supplier master will contain only fictional suppliers and synthetically
-generated attributes.
+The synthetic-data generator will assign each supplier a latent reliability
+parameter to create persistent differences in delivery performance.
+
+This parameter represents an unobserved characteristic of the synthetic
+simulation. It will not be exported as part of the supplier master, provided
+to the predictive model, or displayed in the application. The model must
+estimate supplier reliability from observable historical delivery
+performance.
 
 ### Material Master
 
