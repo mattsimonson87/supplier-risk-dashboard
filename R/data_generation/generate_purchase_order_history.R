@@ -6,9 +6,9 @@
 # No employer, client, or prospective-employer data is used.
 
 # Regenerate prerequisite datasets and hidden simulation parameters.
-source("R/generate_supplier_master.R")
-source("R/generate_material_master.R")
-source("R/generate_supplier_material_relationships.R")
+source("R/data_generation/generate_supplier_master.R")
+source("R/data_generation/generate_material_master.R")
+source("R/data_generation/generate_supplier_material_relationships.R")
 
 # Set the purchase-order seed after the prerequisite scripts because each
 # prerequisite generator sets its own reproducibility seed.

@@ -20,14 +20,14 @@ material_file <- file.path(
 if (!file.exists(supplier_file)) {
   stop(
     "supplier_master.csv was not found. ",
-    "Run R/generate_supplier_master.R first."
+    "Run R/data_generation/generate_supplier_master.R first."
   )
 }
 
 if (!file.exists(material_file)) {
   stop(
     "material_master.csv was not found. ",
-    "Run R/generate_material_master.R first."
+    "Run R/data_generation/generate_material_master.R first."
   )
 }
 

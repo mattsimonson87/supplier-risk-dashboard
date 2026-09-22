@@ -20,7 +20,7 @@ scoring_file <- file.path(
 if (!file.exists(scoring_file)) {
   stop(
     "purchase_order_scoring_dataset.csv was not found. ",
-    "Run R/build_purchase_order_scoring_dataset.R first."
+    "Run R/feature_engineering/build_purchase_order_scoring_dataset.R first."
   )
 }
 
