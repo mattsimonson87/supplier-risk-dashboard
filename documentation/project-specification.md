@@ -46,43 +46,37 @@ be available to the model at the scoring date.
 
 ## Prediction Timing
 
-Each purchase-order line will receive one primary prediction.
+Each purchase-order line will receive one primary prediction when the
+purchase order is created.
 
-The scoring date will be calculated as the later of:
+The scoring date will equal the purchase-order date:
 
-- The purchase-order date
-- 30 calendar days before the promised delivery date
+scoring date = purchase-order date
 
-This approach creates the prediction as close as possible to 30 days before
-the promised delivery date while ensuring that an order is never scored
-before it has been placed.
-
-For example:
-
-- If an order is placed 60 days before its promised delivery date, the order
-  will be scored 30 days before the promised delivery date.
-- If an order is placed 20 days before its promised delivery date, the order
-  will be scored on the order date.
-
-A purchase-order line is eligible for scoring only when it remains open on
-the scoring date. Orders delivered before the calculated scoring date will
-not require a prediction and will be excluded from the scoring dataset.
-
-All predictor fields must represent information available on or before the
-scoring date.
+At the scoring date, the company knows the supplier, material, ordered
+quantity, order value, promised delivery date, quoted lead time, and other
+purchase-order characteristics.
 
 Historical delivery features must be calculated only from purchase-order
-lines with actual delivery dates on or before the scoring date.
+lines with actual delivery dates on or before the scoring date. The current
+order's actual delivery date, number of late days, and final delivery outcome
+are not known at the scoring date and will not be used as predictors.
+
+This point-in-time design replicates the business question:
+
+> At the time this purchase order is created, what is the probability that
+> the order will arrive more than 7 calendar days after its promised delivery
+> date?
 
 The initial proof of concept will produce one prediction per purchase-order
 line. A production implementation could rescore open orders periodically as
-new delivery history, supplier communications, inventory conditions, or
-other operational information becomes available.
+new supplier communications, shipment milestones, inventory conditions, or
+other operational information become available.
 
 ## Primary Decision
 
-Which open purchase-order lines should supply chain teams investigate and
-prioritize for mitigation?
+Which newly created purchase-order lines have the highest late-delivery risk
+and should receive additional monitoring or mitigation planning?
 
 ## Analytical Outputs
 
@@ -293,7 +287,8 @@ tables rather than a raw business-system table.
 Planned fields will include:
 
 - `scoring_record_id`: Unique identifier for the analytical record
-- `scoring_date`: Date on which the purchase-order risk prediction is made
+- `scoring_date`: Date on which the purchase-order risk prediction is made,
+  equal to the purchase-order date in the initial proof of concept
 - `purchase_order_line_id`: Purchase-order line being evaluated
 - `supplier_material_id`: Approved supplier-material relationship
 - `supplier_id`: Supplier associated with the order
@@ -302,7 +297,7 @@ Planned fields will include:
 - `promised_delivery_date`: Supplier-committed delivery date
 - `actual_delivery_date`: Final delivery date retained only for target
   construction and retrospective model evaluation
-- `days_until_promised_delivery`: Number of calendar days between the scoring
+- `planned_lead_time_days`: Number of calendar days between the purchase-order
   date and promised delivery date
 - `ordered_quantity`: Quantity ordered
 - `order_value`: Financial value of the purchase-order line
@@ -311,8 +306,9 @@ Planned fields will include:
 - `quoted_lead_time_days`: Expected lead time for the supplier-material
   relationship
 - Historical supplier-material delivery-performance features calculated
-  using only deliveries completed on or before the scoring date
-- Supplier open-order workload features known on the scoring date
+  using only deliveries completed on or before the purchase-order date
+- Supplier workload features calculated from purchase orders visible on the
+  purchase-order date
 - `late_delivery_target`: Indicator showing whether the order ultimately
   arrived more than 7 calendar days after the promised delivery date
 
@@ -373,7 +369,7 @@ supplier to deliver late.
 
 When calculating operational impact for a purchase-order line, the
 application will use the most recent inventory and demand snapshot available
-on or before the purchase-order scoring date.
+on or before the purchase-order date.
 
 Inventory snapshots will not be used as predictors of supplier lateness.
 They will be used only in the separate operational impact calculation.

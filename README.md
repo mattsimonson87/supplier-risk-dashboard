@@ -6,8 +6,9 @@ decision support using R, Shiny, Plotly, and SQL.
 
 ## Project Objective
 
-This project will predict the probability that an open purchase-order line
-will arrive more than 7 calendar days after its promised delivery date.
+This project will predict, at the time a purchase order is created, the
+probability that the purchase-order line will arrive more than 7 calendar
+days after its promised delivery date.
 
 The predicted probability will be combined with operational impact factors,
 including inventory coverage, material criticality, expected demand, order
