@@ -5,12 +5,14 @@
 #
 # No employer, client, or prospective-employer data is used.
 
-set.seed(422)
-
 # Regenerate prerequisite datasets and hidden simulation parameters.
 source("R/generate_supplier_master.R")
 source("R/generate_material_master.R")
 source("R/generate_supplier_material_relationships.R")
+
+# Set the purchase-order seed after the prerequisite scripts because each
+# prerequisite generator sets its own reproducibility seed.
+set.seed(422)
 
 # Confirm that required objects exist.
 required_objects <- c(
