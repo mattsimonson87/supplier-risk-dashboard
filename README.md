@@ -6,13 +6,13 @@ decision support using R, Shiny, Plotly, and SQL.
 
 ## Project Objective
 
-This project will predict the probability that a supplier-material
-relationship experiences a delivery more than 7 calendar days late within
-the next 30 days.
+This project will predict the probability that an open purchase-order line
+will arrive more than 7 calendar days after its promised delivery date.
 
 The predicted probability will be combined with operational impact factors,
-including inventory coverage, material criticality, expected demand, and
-sourcing alternatives, to prioritize risks for mitigation.
+including inventory coverage, material criticality, expected demand, order
+value, and sourcing alternatives, to prioritize purchase orders for
+mitigation.
 
 ## Planned Capabilities
 

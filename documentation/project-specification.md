@@ -2,76 +2,100 @@
 
 ## Business Problem
 
-Supply chain teams need to identify which supplier-material relationships
-are most likely to experience a late delivery during the next
-30 days.
+Supply chain teams need to identify which open purchase-order lines are at
+risk of arriving materially late.
 
-Because not every late delivery has the same operational consequence, teams
-must also determine which predicted delays would have the greatest business
-impact and require immediate mitigation.
+Earlier identification allows purchasing and supply chain teams to
+investigate supplier constraints, review inventory exposure, evaluate
+alternate sourcing, and prioritize mitigation activity before the promised
+delivery date.
+
+Because not every late order creates the same operational consequence, the
+probability of lateness will be evaluated separately from the potential
+business impact of the delay.
 
 ## Unit of Analysis
 
-One supplier-material relationship evaluated at a specific monthly scoring date. A supplier may provide multiple materials, and a material may be associated with multiple approved suppliers.
+One purchase-order line evaluated at a defined scoring date.
+
+Each purchase-order line represents an order for one material from one
+approved supplier. A supplier may provide multiple materials, and a material
+may be associated with multiple approved suppliers.
 
 ## Prediction Target
 
-Predict whether an expected delivery for a supplier-material relationship
-will arrive more than 7 calendar days after its promised delivery date during
-the 30 days following the scoring date.
+Predict the probability that a purchase-order line will arrive more than
+7 calendar days after its promised delivery date.
 
-All suppliers are assumed to eventually provide the full ordered quantity.
-Partial and incomplete deliveries are outside the scope of the initial
-project version.
+All purchase-order lines are assumed to eventually be delivered in full.
+Partial deliveries, shortages, cancellations, and undelivered orders are
+outside the scope of the initial project version.
 
 ## Target Definition
 
-A supplier-material relationship is eligible for scoring when at least one
-open purchase-order line has a promised delivery date within the 30 days
-following the scoring date.
+The late-delivery target is defined as:
 
-For each eligible purchase-order line:
+- `late_delivery_target = 1` when the actual delivery date is more than
+  7 calendar days after the promised delivery date.
+- `late_delivery_target = 0` when the actual delivery date is no more than
+  7 calendar days after the promised delivery date.
 
-- The late-delivery indicator equals 1 when the actual delivery date is more
-  than 7 calendar days after the promised delivery date.
-- The late-delivery indicator equals 0 when the actual delivery date is no
-  more than 7 calendar days after the promised delivery date.
-
-The supplier-material target is based on the proportion of quantity due
-during the prediction window that arrives more than 7 calendar days after
-its promised delivery date.
-
-The late quantity rate is calculated as:
-
-late quantity rate = quantity delivered more than 7 calendar days late /
-total quantity due during the 30-day prediction window
-
-The supplier-material target equals 1 when the late quantity rate is greater
-than 20 percent. Otherwise, the target equals 0.
-
-Supplier-material relationships without an expected delivery during the
-30-day prediction window are not included in that scoring period.
+The target is calculated only after the delivery outcome is known. The
+actual delivery date, number of late days, and late-delivery target will not
+be available to the model at the scoring date.
 
 ## Prediction Timing
 
-All model features must use information available on or before the scoring
-date. Delivery outcomes occurring after the scoring date must not be used
-as predictors.
+Each purchase-order line will receive one primary prediction.
+
+The scoring date will be calculated as the later of:
+
+- The purchase-order date
+- 30 calendar days before the promised delivery date
+
+This approach creates the prediction as close as possible to 30 days before
+the promised delivery date while ensuring that an order is never scored
+before it has been placed.
+
+For example:
+
+- If an order is placed 60 days before its promised delivery date, the order
+  will be scored 30 days before the promised delivery date.
+- If an order is placed 20 days before its promised delivery date, the order
+  will be scored on the order date.
+
+A purchase-order line is eligible for scoring only when it remains open on
+the scoring date. Orders delivered before the calculated scoring date will
+not require a prediction and will be excluded from the scoring dataset.
+
+All predictor fields must represent information available on or before the
+scoring date.
+
+Historical delivery features must be calculated only from purchase-order
+lines with actual delivery dates on or before the scoring date.
+
+The initial proof of concept will produce one prediction per purchase-order
+line. A production implementation could rescore open orders periodically as
+new delivery history, supplier communications, inventory conditions, or
+other operational information becomes available.
 
 ## Primary Decision
 
-Which supplier-material risks should supply chain teams investigate and
-mitigate first?
+Which open purchase-order lines should supply chain teams investigate and
+prioritize for mitigation?
 
 ## Analytical Outputs
 
 The project will generate:
 
-- A predicted late-delivery probability
-- An operational impact score
+- A predicted probability that each purchase-order line will arrive more than
+  7 calendar days late
+- A risk tier based on the predicted probability
+- An operational impact score calculated separately from the probability
+  model
 - An overall mitigation priority
 - The primary factors contributing to each prediction
-- A supplier and material risk watchlist
+- A prioritized open purchase-order watchlist
 
 ## Modeling Approach
 
@@ -96,10 +120,13 @@ The first version will include:
 
 - Supplier master data
 - Material master data
-- Purchase order and delivery history
+- Approved supplier-material relationships
+- Purchase-order and delivery history
+- Purchase-order-level scoring records
+- Time-aware historical delivery-performance features
+- Logistic regression and XGBoost model evaluation
+- A separate operational impact framework
 - Monthly inventory and demand snapshots
-- Time-aware supplier performance features
-- Predictive model evaluation
 - An interactive Shiny and Plotly application
 
 ## Synthetic Data Tables
@@ -116,7 +143,6 @@ Planned fields:
 - `supplier_tier`: Strategic classification such as Tier 1, Tier 2, or Tier 3
 - `standard_lead_time_days`: Typical number of calendar days between order
   placement and promised delivery
-  on time
 - `active_flag`: Indicates whether the supplier is currently active
 
 The synthetic-data generator will assign each supplier a latent reliability
@@ -189,8 +215,6 @@ Planned fields:
   1 represents the first-choice supplier
 - `unit_price`: Synthetic negotiated price per unit for this supplier and
   material combination
-- `relationship_risk_factor`: Latent synthetic factor used only when
-  generating delivery outcomes
 
 The combination of `supplier_id` and `material_id` must be unique in this
 table.
@@ -199,11 +223,13 @@ The `sourcing_allocation` values for all active suppliers associated with a
 material should total approximately 1.0. A material with one active supplier
 will therefore have a sourcing allocation of 1.0.
 
-The `relationship_risk_factor` will help generate realistic differences in
-delivery performance across supplier-material relationships. It will not be
-provided directly to the predictive model because it represents an
-unobservable synthetic characteristic rather than information available to
-a supply chain analyst.
+The synthetic-data generator will assign each supplier-material relationship
+a latent relationship effect to create realistic differences in delivery
+performance across materials supplied by the same supplier.
+
+This parameter is part of the hidden simulation process. It will not be
+exported as a business field, provided to the predictive model, or displayed
+in the application.
 
 ### Purchase-Order and Delivery History
 
@@ -247,6 +273,51 @@ order quantity, seasonal patterns, recent order volume, and random variation.
 
 The hidden reliability factors will be used only to generate synthetic
 delivery outcomes and will not be provided directly to the predictive model.
+
+The purchase-order and delivery history table contains both information
+available at prediction time and outcomes observed after delivery.
+
+The actual delivery date, late days, and late-delivery flag will be used to
+construct historical features for prior completed orders and to define the
+target for the order being predicted. They will not be used as future-known
+predictors for that order.
+
+### Purchase-Order Scoring Dataset
+
+The purchase-order scoring dataset will contain one row per purchase-order
+line.
+
+The scoring dataset is an analytical table created from the synthetic source
+tables rather than a raw business-system table.
+
+Planned fields will include:
+
+- `scoring_record_id`: Unique identifier for the analytical record
+- `scoring_date`: Date on which the purchase-order risk prediction is made
+- `purchase_order_line_id`: Purchase-order line being evaluated
+- `supplier_material_id`: Approved supplier-material relationship
+- `supplier_id`: Supplier associated with the order
+- `material_id`: Material associated with the order
+- `order_date`: Date on which the purchase order was placed
+- `promised_delivery_date`: Supplier-committed delivery date
+- `actual_delivery_date`: Final delivery date retained only for target
+  construction and retrospective model evaluation
+- `days_until_promised_delivery`: Number of calendar days between the scoring
+  date and promised delivery date
+- `ordered_quantity`: Quantity ordered
+- `order_value`: Financial value of the purchase-order line
+- `order_size_ratio`: Ordered quantity divided by the standard order quantity
+  for the supplier-material relationship
+- `quoted_lead_time_days`: Expected lead time for the supplier-material
+  relationship
+- Historical supplier-material delivery-performance features calculated
+  using only deliveries completed on or before the scoring date
+- Supplier open-order workload features known on the scoring date
+- `late_delivery_target`: Indicator showing whether the order ultimately
+  arrived more than 7 calendar days after the promised delivery date
+
+The actual delivery date and late-delivery target will be retained for model
+development and evaluation but excluded from predictor inputs.
 
 ### Monthly Inventory and Demand Snapshot
 
@@ -299,6 +370,13 @@ window will be included in expected receipts.
 Inventory and demand fields will be used primarily to estimate the potential
 operational impact of a late delivery. They will not be assumed to cause a
 supplier to deliver late.
+
+When calculating operational impact for a purchase-order line, the
+application will use the most recent inventory and demand snapshot available
+on or before the purchase-order scoring date.
+
+Inventory snapshots will not be used as predictors of supplier lateness.
+They will be used only in the separate operational impact calculation.
 
 ## Current Non-Goals
 
