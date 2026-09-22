@@ -1,17 +1,17 @@
 # Build Purchase-Order Scoring Dataset
 #
-# Creates one analytical record per eligible purchase-order line.
+# Creates one analytical record per purchase-order line.
 #
-# Each order is scored on the later of:
-#   1. The purchase-order date
-#   2. Thirty calendar days before the promised delivery date
+# Each purchase-order line is scored when the order is created:
 #
-# Orders delivered on or before the calculated scoring date are excluded
-# because the delivery outcome would already be known.
+# scoring date = purchase-order date
 #
-# Historical features use only deliveries completed on or before the scoring
-# date. Future delivery outcomes are retained only for target construction
-# and retrospective model evaluation.
+# Historical delivery features use only deliveries completed on or before
+# the order date. Supplier workload features use only purchase orders visible
+# on the order date.
+#
+# Actual delivery dates and delivery outcomes are retained only for target
+# construction and retrospective model evaluation.
 #
 # No employer, client, or prospective-employer data is used.
 
@@ -78,7 +78,9 @@ purchase_orders <- read_csv(
   show_col_types = FALSE
 ) %>%
   mutate(
-    order_date = as.Date(order_date),
+    order_date = as.Date(
+      order_date
+    ),
     promised_delivery_date = as.Date(
       promised_delivery_date
     ),
@@ -132,26 +134,33 @@ materials <- read_csv(
 
 stopifnot(
   nrow(purchase_orders) > 0L,
+
   !anyDuplicated(
     purchase_orders$purchase_order_line_id
   ),
+
   !anyDuplicated(
     purchase_orders$purchase_order_id
   ),
+
   !anyDuplicated(
     relationships$supplier_material_id
   ),
+
   !anyDuplicated(
     suppliers$supplier_id
   ),
+
   !anyDuplicated(
     materials$material_id
   ),
+
   all(
     purchase_orders$actual_delivery_date ==
       purchase_orders$promised_delivery_date +
         purchase_orders$late_days
   ),
+
   all(
     purchase_orders$late_delivery_flag ==
       as.integer(
@@ -161,7 +170,7 @@ stopifnot(
 )
 
 # -------------------------------------------------------------------------
-# Add observable supplier, material, and relationship context
+# Add supplier, material, and relationship context
 # -------------------------------------------------------------------------
 
 order_data <- purchase_orders %>%
@@ -207,71 +216,62 @@ stopifnot(
   !anyNA(
     order_data$quoted_lead_time_days
   ),
+
   !anyNA(
     order_data$standard_order_quantity
   ),
+
   !anyNA(
     order_data$supplier_name
   ),
+
   !anyNA(
     order_data$material_name
   )
 )
 
 # -------------------------------------------------------------------------
-# Calculate the scoring date
+# Create order-level scoring fields
 # -------------------------------------------------------------------------
 
 order_data <- order_data %>%
   mutate(
-    thirty_days_before_promise =
-      promised_delivery_date - 30L,
+    # Every order is scored when the order is created.
+    scoring_date = order_date,
 
-    scoring_date = as.Date(
-      pmax(
-        as.numeric(order_date),
-        as.numeric(
-          thirty_days_before_promise
-        )
-      ),
-      origin = "1970-01-01"
+    # Number of days between order creation and promised delivery.
+    planned_lead_time_days = as.integer(
+      promised_delivery_date -
+        order_date
     ),
 
-    days_until_promised_delivery =
-      as.integer(
-        promised_delivery_date -
-          scoring_date
-      ),
-
+    # Compare order size with the typical order size for the relationship.
     order_size_ratio =
       ordered_quantity /
         standard_order_quantity
-  )
-
-# Retain only orders that remain open on the scoring date.
-#
-# Using ">" means that an order delivered on the scoring date is treated as
-# already known and therefore does not require a prediction.
-eligible_orders <- order_data %>%
-  filter(
-    actual_delivery_date > scoring_date
   ) %>%
   arrange(
     scoring_date,
     purchase_order_line_id
   )
 
-excluded_order_count <-
-  nrow(order_data) -
-  nrow(eligible_orders)
+stopifnot(
+  all(
+    order_data$scoring_date ==
+      order_data$order_date
+  ),
+
+  all(
+    order_data$planned_lead_time_days > 0L
+  ),
+
+  all(
+    order_data$order_size_ratio > 0
+  )
+)
 
 message(
-  "Eligible purchase-order lines: ",
-  format(
-    nrow(eligible_orders),
-    big.mark = ","
-  ),
-  " of ",
+  "Purchase-order lines available for scoring: ",
   format(
     nrow(order_data),
     big.mark = ","
@@ -279,32 +279,12 @@ message(
   "."
 )
 
-message(
-  "Orders excluded because delivery was known by the scoring date: ",
-  format(
-    excluded_order_count,
-    big.mark = ","
-  ),
-  "."
-)
-
-if (nrow(eligible_orders) == 0L) {
-  stop(
-    "No eligible purchase-order lines were identified."
-  )
-}
-
 # -------------------------------------------------------------------------
-# Create indexed order-history lists
+# Create indexed order-history lookups
 # -------------------------------------------------------------------------
 #
-# These lists are the primary efficiency improvement.
-#
-# Instead of searching every purchase order for every scoring record:
-#   - relationship_history_lookup contains only orders for that relationship
-#   - supplier_history_lookup contains only orders for that supplier
-#
-# Each lookup is created once and reused.
+# Splitting the source data once is more efficient than repeatedly filtering
+# the complete order table for every scoring record.
 
 relationship_history_lookup <- split(
   order_data,
@@ -342,9 +322,7 @@ on_time_rate_safe <- function(history_data) {
   )
 }
 
-late_quantity_rate_safe <- function(
-  history_data
-) {
+late_quantity_rate_safe <- function(history_data) {
   if (
     nrow(history_data) == 0L ||
       sum(
@@ -366,9 +344,7 @@ late_quantity_rate_safe <- function(
     )
 }
 
-average_late_days_safe <- function(
-  history_data
-) {
+average_late_days_safe <- function(history_data) {
   if (nrow(history_data) == 0L) {
     return(NA_real_)
   }
@@ -379,9 +355,7 @@ average_late_days_safe <- function(
   )
 }
 
-maximum_late_days_safe <- function(
-  history_data
-) {
+maximum_late_days_safe <- function(history_data) {
   if (nrow(history_data) == 0L) {
     return(NA_real_)
   }
@@ -393,12 +367,10 @@ maximum_late_days_safe <- function(
 }
 
 # -------------------------------------------------------------------------
-# Relationship-history feature function
+# Calculate supplier-material delivery history
 # -------------------------------------------------------------------------
 
-calculate_relationship_history <- function(
-  current_order
-) {
+calculate_relationship_history <- function(current_order) {
   current_scoring_date <-
     current_order$scoring_date[[1]]
 
@@ -420,7 +392,8 @@ calculate_relationship_history <- function(
     ]
   }
 
-  # Historical features use only completed prior orders.
+  # Use only prior orders that were fully delivered on or before the current
+  # order date.
   completed_history <- relationship_orders[
     relationship_orders$purchase_order_line_id !=
       current_order_line_id &
@@ -544,12 +517,10 @@ calculate_relationship_history <- function(
 }
 
 # -------------------------------------------------------------------------
-# Supplier-workload feature function
+# Calculate supplier workload at order creation
 # -------------------------------------------------------------------------
 
-calculate_supplier_workload <- function(
-  current_order
-) {
+calculate_supplier_workload <- function(current_order) {
   current_scoring_date <-
     current_order$scoring_date[[1]]
 
@@ -568,15 +539,17 @@ calculate_supplier_workload <- function(
     ]
   }
 
-  # Orders visible and still open at the scoring date.
+  # The proof of concept assumes end-of-day scoring. All purchase orders
+  # created on the order date are therefore visible in the workload totals.
   supplier_open_orders <- supplier_orders[
     supplier_orders$order_date <=
       current_scoring_date &
-      supplier_orders$actual_delivery_date >
+      supplier_orders$actual_delivery_date >=
         current_scoring_date,
   ]
 
-  # Orders placed during the 90 days preceding the scoring date.
+  # Recent order activity includes orders placed during the preceding
+  # 90 days, including the current order date.
   supplier_recent_orders <- supplier_orders[
     supplier_orders$order_date <=
       current_scoring_date &
@@ -623,7 +596,7 @@ calculate_supplier_workload <- function(
 }
 
 # -------------------------------------------------------------------------
-# Build analytical scoring records
+# Build one analytical scoring record per purchase-order line
 # -------------------------------------------------------------------------
 
 message(
@@ -632,10 +605,10 @@ message(
 
 scoring_rows <- lapply(
   seq_len(
-    nrow(eligible_orders)
+    nrow(order_data)
   ),
   function(row_index) {
-    current_order <- eligible_orders[
+    current_order <- order_data[
       row_index,
     ]
 
@@ -653,6 +626,7 @@ scoring_rows <- lapply(
       current_order %>%
         transmute(
           scoring_date,
+
           purchase_order_line_id,
           purchase_order_id,
 
@@ -671,11 +645,11 @@ scoring_rows <- lapply(
           order_date,
           promised_delivery_date,
 
-          # Outcome fields retained only for retrospective development and
-          # evaluation. They must not be used as model predictors.
+          # Retained for target construction and retrospective evaluation.
+          # This field must not be used as a predictor.
           actual_delivery_date,
 
-          days_until_promised_delivery,
+          planned_lead_time_days,
           quoted_lead_time_days,
 
           ordered_quantity,
@@ -691,6 +665,7 @@ scoring_rows <- lapply(
           supplier_priority_rank,
           approved_supplier_count,
 
+          # Outcome fields retained only for evaluation.
           actual_late_days =
             late_days,
 
@@ -704,10 +679,9 @@ scoring_rows <- lapply(
   }
 )
 
-purchase_order_scoring_dataset <-
-  bind_rows(
-    scoring_rows
-  ) %>%
+purchase_order_scoring_dataset <- bind_rows(
+  scoring_rows
+) %>%
   arrange(
     scoring_date,
     purchase_order_line_id
@@ -737,6 +711,25 @@ purchase_order_scoring_dataset <-
         12
     ),
 
+    promised_delivery_month = as.integer(
+      format(
+        promised_delivery_date,
+        "%m"
+      )
+    ),
+
+    promised_delivery_month_sin = sin(
+      2 * pi *
+        promised_delivery_month /
+        12
+    ),
+
+    promised_delivery_month_cos = cos(
+      2 * pi *
+        promised_delivery_month /
+        12
+    ),
+
     has_90d_relationship_history =
       completed_order_count_90d > 0L,
 
@@ -758,7 +751,10 @@ purchase_order_scoring_dataset <-
 stopifnot(
   nrow(
     purchase_order_scoring_dataset
-  ) > 0L,
+  ) ==
+    nrow(
+      purchase_orders
+    ),
 
   !anyDuplicated(
     purchase_order_scoring_dataset$
@@ -772,28 +768,26 @@ stopifnot(
 
   all(
     purchase_order_scoring_dataset$
-      scoring_date >=
+      scoring_date ==
       purchase_order_scoring_dataset$
         order_date
   ),
 
   all(
     purchase_order_scoring_dataset$
-      scoring_date <
-      purchase_order_scoring_dataset$
-        actual_delivery_date
+      planned_lead_time_days ==
+      as.integer(
+        purchase_order_scoring_dataset$
+          promised_delivery_date -
+          purchase_order_scoring_dataset$
+            order_date
+      )
   ),
 
   all(
     purchase_order_scoring_dataset$
-      days_until_promised_delivery >=
+      planned_lead_time_days >
       0L
-  ),
-
-  all(
-    purchase_order_scoring_dataset$
-      days_until_promised_delivery <=
-      30L
   ),
 
   all(
@@ -828,7 +822,7 @@ stopifnot(
   )
 )
 
-# Confirm that hidden generator variables are absent.
+# Confirm that hidden simulation fields are absent.
 forbidden_fields <- c(
   "latent_reliability",
   "latent_relationship_effect",
@@ -868,7 +862,7 @@ write_csv(
 )
 
 # -------------------------------------------------------------------------
-# Print a concise profile
+# Print concise profile
 # -------------------------------------------------------------------------
 
 late_delivery_rate <- mean(
@@ -939,6 +933,24 @@ cat(
 )
 
 cat(
+  "Minimum planned lead time:",
+  min(
+    purchase_order_scoring_dataset$
+      planned_lead_time_days
+  ),
+  "days\n"
+)
+
+cat(
+  "Maximum planned lead time:",
+  max(
+    purchase_order_scoring_dataset$
+      planned_lead_time_days
+  ),
+  "days\n"
+)
+
+cat(
   "Late-delivery target rate:",
   scales::percent(
     late_delivery_rate,
@@ -988,6 +1000,10 @@ message(
 )
 
 message(
+  "Every purchase-order line was scored on its order date."
+)
+
+message(
   "Actual delivery dates and outcomes were retained only for evaluation."
 )
 
@@ -999,9 +1015,8 @@ print(
         purchase_order_line_id,
         supplier_name,
         material_name,
-        order_date,
         promised_delivery_date,
-        days_until_promised_delivery,
+        planned_lead_time_days,
         ordered_quantity,
         order_size_ratio,
         completed_order_count_180d,
