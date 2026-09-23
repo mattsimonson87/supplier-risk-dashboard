@@ -1,406 +1,471 @@
 # Project Specification
 
+## Project Summary
+
+Supplier Risk Intelligence is a synthetic, end-to-end supply-chain analytics project that identifies purchase-order lines at elevated risk of arriving materially late and prioritizes a limited mitigation workload using a separate operational-impact framework.
+
+The project predicts, when a purchase order is created, the probability that the purchase-order line will arrive more than seven calendar days after its promised delivery date.
+
+The analytical workflow combines:
+
+- Reproducible synthetic supply-chain data
+- Point-in-time feature engineering
+- Chronological model development and evaluation
+- Logistic regression and XGBoost comparison
+- Explanatory linear probability and logistic models
+- Capacity-constrained risk review
+- A transparent operational-impact rubric
+- A prioritized supplier-risk watchlist
+- Power BI-ready decision-support outputs
+
+No employer, client, or prospective-employer data or proprietary logic is used.
+
 ## Business Problem
 
-Supply chain teams need to identify which open purchase-order lines are at
-risk of arriving materially late.
+Supply-chain teams need to identify, when a purchase order is created, which purchase-order lines are most likely to arrive materially late.
 
-Earlier identification allows purchasing and supply chain teams to
-investigate supplier constraints, review inventory exposure, evaluate
-alternate sourcing, and prioritize mitigation activity before the promised
-delivery date.
+Earlier identification allows purchasing and supply-chain teams to investigate supplier constraints, confirm delivery commitments, evaluate sourcing options, and prioritize mitigation activity before the promised delivery date.
 
-Because not every late order creates the same operational consequence, the
-probability of lateness will be evaluated separately from the potential
-business impact of the delay.
+Because review capacity is limited, the project ranks newly created purchase-order lines by predicted late-delivery probability. The highest-risk 20% of orders form the active risk-review population.
+
+Late-delivery probability is evaluated separately from the potential operational consequence of the delay. A transparent operational-impact rubric then determines intervention priority within the active watchlist.
+
+The project addresses two related but distinct questions:
+
+1. How likely is each purchase-order line to arrive more than seven calendar days after its promised delivery date?
+2. If the order is materially late, how consequential could the delay be?
 
 ## Unit of Analysis
 
-One purchase-order line evaluated at a defined scoring date.
+The unit of analysis is one purchase-order line evaluated at a defined scoring date.
 
-Each purchase-order line represents an order for one material from one
-approved supplier. A supplier may provide multiple materials, and a material
-may be associated with multiple approved suppliers.
+Each purchase-order line represents an order for one material from one approved supplier. A supplier may provide multiple materials, and a material may be associated with multiple approved suppliers.
+
+In the current synthetic process, each purchase order contains one line. The data model retains separate purchase-order and purchase-order-line identifiers so that a future implementation can support multi-line orders.
 
 ## Prediction Target
 
-Predict the probability that a purchase-order line will arrive more than
-7 calendar days after its promised delivery date.
+The model predicts the probability that a purchase-order line will arrive more than seven calendar days after its promised delivery date.
 
-All purchase-order lines are assumed to eventually be delivered in full.
-Partial deliveries, shortages, cancellations, and undelivered orders are
-outside the scope of the initial project version.
+The binary target is defined as:
 
-## Target Definition
+- `late_delivery_target = 1` when actual delivery occurs more than seven calendar days after the promised delivery date.
+- `late_delivery_target = 0` when actual delivery occurs no more than seven calendar days after the promised delivery date.
 
-The late-delivery target is defined as:
+All purchase-order lines are assumed to eventually be delivered in full. Partial deliveries, shortages, cancellations, and undelivered orders are outside the implemented scope.
 
-- `late_delivery_target = 1` when the actual delivery date is more than
-  7 calendar days after the promised delivery date.
-- `late_delivery_target = 0` when the actual delivery date is no more than
-  7 calendar days after the promised delivery date.
-
-The target is calculated only after the delivery outcome is known. The
-actual delivery date, number of late days, and late-delivery target will not
-be available to the model at the scoring date.
+The target is calculated only after the delivery outcome is known. Actual delivery date, actual late days, and the final target are retained for retrospective development and evaluation but are prohibited as predictors for the order being scored.
 
 ## Prediction Timing
 
-Each purchase-order line will receive one primary prediction when the
-purchase order is created.
+Each purchase-order line receives one primary prediction when the order is created.
 
-The scoring date will equal the purchase-order date:
-
+```text
 scoring date = purchase-order date
+```
 
-At the scoring date, the company knows the supplier, material, ordered
-quantity, order value, promised delivery date, quoted lead time, and other
-purchase-order characteristics.
+At the scoring date, the workflow can use supplier, material, quantity, promised-delivery, quoted-lead-time, price, sourcing, and other current-order information.
 
-Historical delivery features must be calculated only from purchase-order
-lines with actual delivery dates on or before the scoring date. The current
-order's actual delivery date, number of late days, and final delivery outcome
-are not known at the scoring date and will not be used as predictors.
+Historical delivery features include only prior orders with actual delivery dates on or before the scoring date. Supplier workload features include only purchase orders visible by that date.
 
-This point-in-time design replicates the business question:
+The proof of concept assumes end-of-day batch scoring, so orders created on the same date are visible in that date's workload totals.
 
-> At the time this purchase order is created, what is the probability that
-> the order will arrive more than 7 calendar days after its promised delivery
-> date?
+The design answers:
 
-The initial proof of concept will produce one prediction per purchase-order
-line. A production implementation could rescore open orders periodically as
-new supplier communications, shipment milestones, inventory conditions, or
-other operational information become available.
+> At the time this purchase order is created, what is the probability that it will arrive more than seven calendar days after its promised delivery date?
+
+A production implementation could rescore open orders as new supplier communications, shipment milestones, inventory conditions, or other operational information become available.
 
 ## Primary Decision
 
-Which newly created purchase-order lines have the highest late-delivery risk
-and should receive additional monitoring or mitigation planning?
+Which newly created purchase-order lines fall within the highest-risk 20% and therefore warrant additional review?
+
+Within that capacity-constrained population, which orders require the greatest intervention urgency based on their potential operational impact?
 
 ## Analytical Outputs
 
-The project will generate:
+The implemented workflow generates:
 
-- A predicted probability that each purchase-order line will arrive more than
-  7 calendar days late
-- A risk tier based on the predicted probability
-- An operational impact score calculated separately from the probability
-  model
-- An overall mitigation priority
-- The primary factors contributing to each prediction
-- A prioritized open purchase-order watchlist
+- Predicted late-delivery probability
+- Risk rank
+- Locked top-20% active-review flag
+- Reporting risk tier
+- Separate operational-impact score from 0 to 100
+- Fixed operational-impact tier
+- Intervention-priority category
+- Recommended action
+- Prioritized supplier-risk watchlist
+- Capacity-based performance summaries
+- Risk-decile and cumulative-gains outputs
+- Power BI-ready reporting tables
 
-## Modeling Approach
+Actual delivery outcomes are retained for retrospective evaluation but do not determine risk rank, impact score, intervention priority, or recommended action at scoring time.
 
-The project will use complementary models for interpretation and prediction:
+## Synthetic Data Approach
 
-1. A linear probability model as an explanatory benchmark
-2. Logistic regression as an interpretable probability-model baseline
-3. XGBoost as the primary nonlinear predictive model
+All suppliers, materials, supplier-material relationships, purchase orders, delivery outcomes, and analytical records are synthetically generated.
 
-The linear probability model will use a concise, nonredundant predictor set
-and heteroskedasticity-robust standard errors. Its coefficients will be used
-to describe conditional associations in percentage-point terms.
+The synthetic outcome mechanism uses a calibrated logistic probability process containing:
 
-Logistic regression and XGBoost will be compared using out-of-time
-validation. Primary evaluation measures will include ROC AUC,
-precision-recall AUC, log loss, and Brier score.
+- Persistent hidden supplier reliability
+- Persistent hidden supplier-material effects
+- Order size above the normal supplier-material quantity
+- Recent supplier workload pressure
+- Promised lead-time compression
+- Promised-delivery seasonality
+- Random outcome variation
 
-Logistic regression results will also be interpreted using odds ratios,
-average marginal effects, and selected probability contrasts expressed in
-the original business units.
+Hidden simulation fields are used only to generate synthetic outcomes. They are not exported, supplied to predictive models, or displayed in reporting outputs.
 
-XGBoost explanations will use held-out permutation importance to assess
-global predictive contribution and SHAP values to explain individual
-purchase-order predictions.
+The final generated dataset contains 8,699 purchase-order lines with an overall materially late rate of approximately 12%.
 
-Model explanations will describe predictive associations and conditional
-relationships. They will not be presented as estimates of causal effects.
-
-## Data Approach
-
-All supplier, material, purchase order, delivery, inventory, and demand data
-will be synthetically generated.
-
-No employer, client, or prospective-employer data or proprietary logic will
-be used.
-
-## Initial Scope
-
-The first version will include:
-
-- Supplier master data
-- Material master data
-- Approved supplier-material relationships
-- Purchase-order and delivery history
-- Purchase-order-level scoring records
-- Time-aware historical delivery-performance features
-- Linear probability, logistic regression, and XGBoost model evaluation
-- Average marginal effects and probability contrasts for interpretable models
-- Global and purchase-order-level model explanations
-- A separate operational impact framework
-- Monthly inventory and demand snapshots
-- An interactive Shiny and Plotly application
-
-## Synthetic Data Tables
+## Source Data Tables
 
 ### Supplier Master
 
-The supplier master will contain one row per supplier.
+The supplier master contains one row per fictional supplier. Fields include:
 
-Planned fields:
+- `supplier_id`
+- `supplier_name`
+- `supplier_region`
+- `supplier_tier`
+- `standard_lead_time_days`
+- `active_flag`
 
-- `supplier_id`: Unique synthetic supplier identifier
-- `supplier_name`: Fictional supplier name used in the application
-- `supplier_region`: Geographic region in which the supplier operates
-- `supplier_tier`: Strategic classification such as Tier 1, Tier 2, or Tier 3
-- `standard_lead_time_days`: Typical number of calendar days between order
-  placement and promised delivery
-- `active_flag`: Indicates whether the supplier is currently active
-
-The synthetic-data generator will assign each supplier a latent reliability
-parameter to create persistent differences in delivery performance.
-
-This parameter represents an unobserved characteristic of the synthetic
-simulation. It will not be exported as part of the supplier master, provided
-to the predictive model, or displayed in the application. The model must
-estimate supplier reliability from observable historical delivery
-performance.
+The generator assigns each supplier a latent reliability parameter. This hidden parameter is not exported. Observable supplier-wide historical performance must act as its business-available proxy.
 
 ### Material Master
 
-The material master will contain one row per material.
+The material master contains one row per fictional material. Fields include:
 
-Planned fields:
+- `material_id`
+- `material_name`
+- `material_category`
+- `material_criticality`
+- `unit_cost`
+- `average_daily_demand`
+- `demand_variability`
+- `safety_stock_days`
+- `approved_supplier_count`
+- `active_flag`
 
-- `material_id`: Unique synthetic material identifier
-- `material_name`: Fictional material name used in the application
-- `material_category`: Broad grouping such as electronics, mechanical,
-  packaging, or raw material
-- `material_criticality`: Operational importance classified as low, medium,
-  or high
-- `unit_cost`: Synthetic cost per unit
-- `average_daily_demand`: Typical number of units consumed per day
-- `demand_variability`: Synthetic measure of variation in daily demand
-- `safety_stock_days`: Target number of days of inventory maintained as
-  protection against uncertainty
-- `approved_supplier_count`: Number of suppliers approved to provide the
-  material
-- `active_flag`: Indicates whether the material is currently active
+A material may be associated with multiple approved suppliers.
 
-A material may be associated with multiple approved suppliers. The actual
-supplier-material relationships will be stored separately rather than
-assigning a single supplier directly in the material master.
+### Supplier-Material Relationships
 
-### Supplier-Material Relationship
+This table contains one row per approved supplier and material pairing. Fields include:
 
-The supplier-material relationship table will contain one row per approved
-supplier and material pairing.
+- `supplier_material_id`
+- `supplier_id`
+- `material_id`
+- `relationship_start_date`
+- `relationship_end_date`
+- `relationship_status`
+- `quoted_lead_time_days`
+- `minimum_order_quantity`
+- `standard_order_quantity`
+- `sourcing_allocation`
+- `preferred_supplier_flag`
+- `supplier_priority_rank`
+- `unit_price`
 
-This table represents the many-to-many relationship between suppliers and
-materials. A supplier may provide multiple materials, and a material may be
-available from multiple approved suppliers.
+The combination of supplier and material is unique. Active sourcing allocations for a material total approximately 1.0.
 
-Planned fields:
-
-- `supplier_material_id`: Unique identifier for the supplier-material
-  relationship
-- `supplier_id`: Supplier identifier linked to the supplier master
-- `material_id`: Material identifier linked to the material master
-- `relationship_start_date`: Date on which the supplier became approved to
-  provide the material
-- `relationship_end_date`: Optional date on which the relationship became
-  inactive
-- `relationship_status`: Indicates whether the relationship is active,
-  suspended, or inactive
-- `quoted_lead_time_days`: Expected number of calendar days between order
-  placement and promised delivery for this specific supplier-material
-  relationship
-- `minimum_order_quantity`: Minimum quantity accepted for an individual
-  purchase order
-- `standard_order_quantity`: Typical quantity ordered from the supplier for
-  the material
-- `sourcing_allocation`: Expected proportion of the material's demand
-  allocated to this supplier
-- `preferred_supplier_flag`: Indicates whether the supplier is the preferred
-  source for the material
-- `supplier_priority_rank`: Supplier preference rank for the material, where
-  1 represents the first-choice supplier
-- `unit_price`: Synthetic negotiated price per unit for this supplier and
-  material combination
-
-The combination of `supplier_id` and `material_id` must be unique in this
-table.
-
-The `sourcing_allocation` values for all active suppliers associated with a
-material should total approximately 1.0. A material with one active supplier
-will therefore have a sourcing allocation of 1.0.
-
-The synthetic-data generator will assign each supplier-material relationship
-a latent relationship effect to create realistic differences in delivery
-performance across materials supplied by the same supplier.
-
-This parameter is part of the hidden simulation process. It will not be
-exported as a business field, provided to the predictive model, or displayed
-in the application.
+The generator assigns each relationship a hidden effect that is not exported or used as a predictor.
 
 ### Purchase-Order and Delivery History
 
-The purchase-order and delivery history table will contain one row per
-purchase-order line.
+The history table contains one row per purchase-order line. Fields include:
 
-Planned fields:
+- `purchase_order_line_id`
+- `purchase_order_id`
+- `supplier_material_id`
+- `supplier_id`
+- `material_id`
+- `order_date`
+- `promised_delivery_date`
+- `actual_delivery_date`
+- `ordered_quantity`
+- `unit_price`
+- `order_value`
+- `late_days`
+- `late_delivery_flag`
 
-- `purchase_order_line_id`: Unique identifier for the purchase-order line
-- `purchase_order_id`: Identifier shared by all lines belonging to the same
-  purchase order
-- `supplier_material_id`: Identifier linking the order line to an approved
-  supplier-material relationship
-- `supplier_id`: Supplier identifier included for validation and convenient
-  analysis
-- `material_id`: Material identifier included for validation and convenient
-  analysis
-- `order_date`: Date on which the purchase order was placed
-- `promised_delivery_date`: Date on which the supplier committed to deliver
-  the order
-- `actual_delivery_date`: Date on which the full ordered quantity was
-  delivered
-- `ordered_quantity`: Number of units ordered
-- `unit_price`: Synthetic negotiated price per unit at the time of the order
-- `order_value`: Ordered quantity multiplied by unit price
-- `late_days`: Number of calendar days between the promised and actual
-  delivery dates, with early deliveries represented by negative values
-- `late_delivery_flag`: Indicates whether the delivery occurred more than
-  7 calendar days after the promised delivery date
+The table contains both information available at order creation and retrospective delivery outcomes. Post-delivery fields are used only to create historical features for later orders and to evaluate the current order after its outcome is known.
 
-All purchase-order lines will eventually be delivered in full. Partial
-deliveries, cancellations, and undelivered orders are outside the scope of
-the initial project version.
+## Purchase-Order Scoring Dataset
 
-The promised delivery date will be based primarily on the order date and the
-quoted lead time for the supplier-material relationship.
+The scoring dataset contains one analytical record per purchase-order line.
 
-Synthetic delivery performance will vary based on hidden supplier and
-supplier-material reliability factors, order size relative to the standard
-order quantity, seasonal patterns, recent order volume, and random variation.
+Every order is scored on its purchase-order date. Historical delivery features include only orders completed on or before that date. Supplier workload includes only orders visible by the scoring date.
 
-The hidden reliability factors will be used only to generate synthetic
-delivery outcomes and will not be provided directly to the predictive model.
+The scoring dataset includes:
 
-The purchase-order and delivery history table contains both information
-available at prediction time and outcomes observed after delivery.
+- Analytical and business identifiers
+- Supplier and material reporting attributes
+- Order and promised-delivery dates
+- Planned and quoted lead times
+- Lead-time pressure
+- Ordered quantity and order-size ratio
+- Supplier-material completed-order history
+- Supplier-material reliability and delay-severity history
+- Supplier-wide completed-order history
+- Supplier-wide reliability and delay-severity history
+- Open-order and trailing supplier workload
+- Promised-delivery seasonality
+- Limited-history indicators
+- Operational-impact fields
+- Retrospective outcomes for development and evaluation
 
-The actual delivery date, late days, and late-delivery flag will be used to
-construct historical features for prior completed orders and to define the
-target for the order being predicted. They will not be used as future-known
-predictors for that order.
+The predictive model uses a locked 40-predictor subset. Identifiers, post-delivery outcomes, and operational-impact fields are excluded from predictive inputs.
 
-### Purchase-Order Scoring Dataset
+Hidden supplier reliability, hidden relationship effects, and latent late-delivery probability are explicitly prohibited from the exported scoring dataset.
 
-The purchase-order scoring dataset will contain one row per purchase-order
-line.
+## Point-in-Time Controls
 
-The scoring dataset is an analytical table created from the synthetic source
-tables rather than a raw business-system table.
+The implemented controls include:
 
-Planned fields will include:
+- `scoring_date` equals `order_date`.
+- Historical delivery features require `actual_delivery_date <= scoring_date`.
+- The current order is excluded from its own completed-delivery history.
+- Workload uses only orders created by the scoring date.
+- Hidden simulation fields are excluded from exported analytical data.
+- Future outcome fields are excluded from model inputs.
+- Preprocessing parameters are learned only from the applicable fitting population.
+- Chronological periods are used instead of random train-test splits.
 
-- `scoring_record_id`: Unique identifier for the analytical record
-- `scoring_date`: Date on which the purchase-order risk prediction is made,
-  equal to the purchase-order date in the initial proof of concept
-- `purchase_order_line_id`: Purchase-order line being evaluated
-- `supplier_material_id`: Approved supplier-material relationship
-- `supplier_id`: Supplier associated with the order
-- `material_id`: Material associated with the order
-- `order_date`: Date on which the purchase order was placed
-- `promised_delivery_date`: Supplier-committed delivery date
-- `actual_delivery_date`: Final delivery date retained only for target
-  construction and retrospective model evaluation
-- `planned_lead_time_days`: Number of calendar days between the purchase-order
-  date and promised delivery date
-- `ordered_quantity`: Quantity ordered
-- `order_value`: Financial value of the purchase-order line
-- `order_size_ratio`: Ordered quantity divided by the standard order quantity
-  for the supplier-material relationship
-- `quoted_lead_time_days`: Expected lead time for the supplier-material
-  relationship
-- Historical supplier-material delivery-performance features calculated
-  using only deliveries completed on or before the purchase-order date
-- Supplier workload features calculated from purchase orders visible on the
-  purchase-order date
-- `late_delivery_target`: Indicator showing whether the order ultimately
-  arrived more than 7 calendar days after the promised delivery date
+## Predictive Features
 
-The actual delivery date and late-delivery target will be retained for model
-development and evaluation but excluded from predictor inputs.
+The locked predictive dataset contains 40 fields representing:
 
-### Monthly Inventory and Demand Snapshot
+- Current-order characteristics
+- Promised-delivery seasonality
+- Supplier-material historical volume and reliability
+- Supplier-material delay severity
+- Supplier-wide historical reliability
+- Supplier workload
+- Limited-history indicators
 
-The monthly inventory and demand snapshot table will contain one row per
-material and monthly scoring date.
+Operational-impact fields are deliberately excluded from the probability model so likelihood and consequence remain distinct.
 
-Planned fields:
+## Chronological Evaluation Design
 
-- `snapshot_id`: Unique identifier for the material and scoring-date
-  combination
-- `scoring_date`: Monthly date on which inventory exposure and supplier risk
-  are evaluated
-- `material_id`: Material identifier linked to the material master
-- `on_hand_quantity`: Usable inventory available on the scoring date
-- `open_order_quantity`: Quantity already ordered but not yet delivered as
-  of the scoring date
-- `average_daily_demand_30d`: Average daily demand during the 30 days
-  preceding the scoring date
-- `average_daily_demand_90d`: Average daily demand during the 90 days
-  preceding the scoring date
-- `forecast_demand_30d`: Expected material demand during the 30 days
-  following the scoring date
-- `demand_variability_90d`: Variability in daily demand during the 90 days
-  preceding the scoring date
-- `days_of_supply`: Number of days that current on-hand inventory is expected
-  to support based on recent average daily demand
-- `projected_inventory_30d`: Estimated inventory remaining after expected
-  demand and scheduled deliveries during the next 30 days
-- `inventory_value`: On-hand quantity multiplied by the material's unit cost
-- `stockout_risk_flag`: Rule-based indicator showing whether projected
-  inventory is expected to fall below zero during the next 30 days
+The scoring dataset spans January 1, 2023 through August 31, 2026.
 
-The days-of-supply measure will be calculated as:
+The chronological periods are:
 
-days of supply = on-hand quantity / average daily demand during the prior
-30 days
+- Warm-up: January 1, 2023 through December 31, 2023
+- Training: January 1, 2024 through October 31, 2025
+- Validation: November 1, 2025 through February 28, 2026
+- Test: March 1, 2026 through August 31, 2026
 
-Materials with no recent demand will have a missing days-of-supply value
-rather than an infinite value. These materials will be retained and
-identified separately so that no recent demand is not confused with missing
-or invalid data.
+The warm-up period provides historical context but is excluded from model estimation and evaluation.
 
-The projected inventory measure will be calculated as:
+The training period was used to estimate candidate models and preprocessing. The validation period was used to compare model families, improve observable feature engineering, and lock the review-capacity and decision-support policies.
 
-projected inventory = on-hand quantity + expected receipts - forecast demand
+After all analytical and operating decisions were locked, the selected logistic workflow was refit on training plus validation and evaluated once on the final test period.
 
-Only purchase orders expected to arrive by the end of the 30-day forecast
-window will be included in expected receipts.
+The next model artifact will be a deployment model refit on training, validation, and test data. That model will use all post-warm-up history for future scoring but will not provide another unbiased performance estimate.
 
-Inventory and demand fields will be used primarily to estimate the potential
-operational impact of a late delivery. They will not be assumed to cause a
-supplier to deliver late.
+## Modeling Approach
 
-When calculating operational impact for a purchase-order line, the
-application will use the most recent inventory and demand snapshot available
-on or before the purchase-order date.
+### Predictive Model Comparison
 
-Inventory snapshots will not be used as predictors of supplier lateness.
-They will be used only in the separate operational impact calculation.
+An unpenalized logistic regression and 12 controlled XGBoost candidates were compared on the chronological validation period.
+
+Model selection considered:
+
+- ROC AUC
+- Precision-recall AUC
+- Log loss
+- Brier score
+- Performance at fixed review capacities
+- Interpretability and implementation complexity
+
+Validation performance was:
+
+| Model | ROC AUC | PR AUC | Log Loss | Brier Score |
+|---|---:|---:|---:|---:|
+| Logistic regression | 0.717 | 0.292 | 0.373 | 0.113 |
+| Selected XGBoost candidate | 0.708 | 0.297 | 0.375 | 0.113 |
+
+Logistic regression was selected because XGBoost improved PR AUC by only 0.005 while reducing ROC AUC and slightly worsening probability-accuracy measures. The small nonlinear gain did not justify the additional complexity.
+
+### Final Test Evaluation
+
+After the feature set, preprocessing workflow, model family, review capacity, impact rubric, and watchlist policy were locked, logistic regression was refit on 5,496 combined training and validation records.
+
+It was evaluated once on the later 1,288-record test period.
+
+Final test performance was:
+
+| Metric | Result |
+|---|---:|
+| ROC AUC | 0.692 |
+| PR AUC | 0.211 |
+| Log loss | 0.336 |
+| Brier score | 0.0976 |
+| Test late-delivery rate | 11.5% |
+
+The lower discrimination relative to validation is reported transparently. No model, feature, capacity, impact, or watchlist changes will be made in response to the final test result.
+
+### Explanatory Models
+
+A separate linear probability model and logistic regression were estimated on the chronological training period using a concise 12-predictor specification.
+
+The linear probability model uses HC3 robust standard errors. The explanatory logistic model reports robust odds ratios, average marginal effects, and selected probability contrasts.
+
+Key conditional associations include:
+
+- An order 50% larger than the normal supplier-material order was associated with a 6.6-percentage-point increase in average predicted late-delivery probability.
+- Ten days of promised lead-time compression was associated with a 5.8-percentage-point increase.
+- Moving from lower to higher supplier-wide historical late-quantity performance was associated with a 2.9-percentage-point increase.
+- Higher recent supplier workload pressure had a smaller positive association.
+- Promised-delivery seasonality was statistically detectable.
+
+These results describe conditional associations in the synthetic data, not causal effects.
+
+## Locked Review-Capacity Policy
+
+The active supplier-risk watchlist contains the highest-risk 20% of newly scored orders.
+
+The policy is rank-based rather than tied to a fixed probability threshold. This maintains a stable review workload when probability distributions change between scoring periods or after refitting.
+
+Validation performance under the locked rule was:
+
+- 168 of 836 orders reviewed
+- 48 of 119 late orders identified
+- 40.3% recall
+- 28.6% precision
+- 2.01 times baseline lift
+
+Final test performance under the same unchanged rule was:
+
+- 258 of 1,288 orders reviewed
+- 56 of 148 late orders identified
+- 37.8% recall
+- 21.7% precision
+- 1.89 times baseline lift
+
+Alternative capacities may be displayed in Power BI for scenario analysis, but the designated operating policy and final test evaluation use the top-20% rule.
+
+## Operational-Impact Framework
+
+Predicted probability measures likelihood, not consequence.
+
+A separate operational-impact rubric scores each order from 0 to 100 using information available at order creation.
+
+The locked components are:
+
+- Material criticality: maximum 35 points
+- Approved-supplier availability: maximum 25 points
+- Sourcing allocation: maximum 20 points
+- Order value: maximum 20 points
+
+Order-value scoring uses thresholds learned from the chronological training period:
+
+- First quartile: $28,908.02
+- Median: $68,280.66
+- Third quartile: $125,244.00
+
+The fixed impact tiers are:
+
+- Low: below 40
+- Moderate: 40 to below 60
+- High: 60 to below 80
+- Very High: 80 to 100
+
+The rubric is a transparent prototype policy rather than a statistically estimated impact model. In a real implementation, stakeholders would validate the components, weights, and thresholds.
+
+## Watchlist Priority Logic
+
+Risk-review status and operational impact determine priority:
+
+1. **Immediate Mitigation**
+   - Highest-risk 20%
+   - Very High impact
+
+2. **Priority Review**
+   - Highest-risk 20%
+   - High impact
+
+3. **Standard Risk Review**
+   - Highest-risk 20%
+   - Moderate or Low impact
+
+4. **Impact Monitoring**
+   - Outside the highest-risk 20%
+   - Very High impact
+
+5. **Routine Monitoring**
+   - All remaining orders
+
+Impact Monitoring does not expand the active predictive review workload. It preserves visibility to highly consequential orders for contingency awareness.
+
+A probability-times-impact field may be used for visualization, but it does not determine watchlist membership or priority.
+
+## Deferred Inventory and Demand Enhancement
+
+Monthly inventory and demand snapshots were originally proposed for the initial impact framework. They are deferred to keep the implemented portfolio project focused and reproducible.
+
+The current impact score uses material criticality, approved supplier count, sourcing allocation, and order value.
+
+A future version could include:
+
+- On-hand inventory
+- Days of supply
+- Forecast demand
+- Expected receipts
+- Projected inventory
+- Safety-stock exposure
+- Projected stockout timing
+
+These fields would primarily refine the consequence of a delayed order. They would not automatically be included in the late-delivery probability model.
+
+## Implemented Scope
+
+The completed analytical scope includes:
+
+- Reproducible synthetic source data
+- Point-in-time purchase-order scoring records
+- Supplier-material and supplier-wide historical features
+- Supplier workload features
+- Chronological warm-up, training, validation, and test periods
+- Logistic regression and XGBoost comparison
+- Explanatory linear probability and logistic models
+- Robust inference, marginal effects, and probability contrasts
+- Capacity-based validation analysis
+- Locked top-20% review policy
+- Locked operational-impact rubric
+- Locked intervention-priority logic
+- Validation and final-test watchlists
+- One-time final test evaluation without post-test tuning
+- Power BI-ready CSV outputs
+
+## Remaining Scope
+
+The remaining work is:
+
+- Refit the locked logistic workflow on training, validation, and test data for deployment
+- Generate a future or current synthetic scoring population
+- Create final deployment watchlist outputs
+- Build the Power BI decision-support report
+- Finalize project documentation, screenshots, and interview materials
 
 ## Current Non-Goals
 
-The first version will not attempt to simulate:
+The implemented version does not attempt to provide:
 
-- A complete manufacturing network
-- Bills of material
-- Real transportation routes
-- Real-time scoring
-- Causal effects of mitigation actions
-- Production-scale model deployment
+- A complete manufacturing network simulation
+- Bills of material or production-line dependencies
+- Real transportation routes or shipment milestones
+- Partial-delivery or cancellation outcomes
+- Real-time model scoring
+- Causal estimates of supplier behavior or mitigation effectiveness
+- A statistically estimated impact model
+- Production cloud deployment
+- Automated source-system integration
+- Real supplier or employer data
+- A claim that synthetic-data performance will transfer directly to a real procurement environment
+
+A real implementation would require stakeholder validation, source-system integration, prospective testing, intervention-outcome collection, calibration monitoring, drift monitoring, access controls, and governance.
