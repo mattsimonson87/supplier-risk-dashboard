@@ -272,14 +272,14 @@ row.names(supplier_material_relationships) <- NULL
 relationship_latent_parameters <- data.frame(
   supplier_material_id =
     supplier_material_relationships$supplier_material_id,
-  latent_relationship_effect = round(
-    rnorm(
-      nrow(supplier_material_relationships),
-      mean = 0,
-      sd = 0.35
+    latent_relationship_effect = round(
+      rnorm(
+        nrow(supplier_material_relationships),
+        mean = 0,
+        sd = 0.22
+      ),
+      digits = 3
     ),
-    digits = 3
-  ),
   stringsAsFactors = FALSE
 )
 

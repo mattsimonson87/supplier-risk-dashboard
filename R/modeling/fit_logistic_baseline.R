@@ -6,9 +6,7 @@
 #
 # Preprocessing and model estimation use only the chronological training
 # period. The validation period is used for model assessment and threshold
-# analysis.
-#
-# The final test dataset is intentionally not loaded or evaluated.
+# analysis. The final test dataset is intentionally not loaded or evaluated.
 
 library(tidymodels)
 library(dplyr)
@@ -45,10 +43,7 @@ missing_files <- required_files[
 if (length(missing_files) > 0L) {
   stop(
     "Required model datasets are missing: ",
-    paste(
-      missing_files,
-      collapse = ", "
-    ),
+    paste(missing_files, collapse = ", "),
     ". Run R/modeling/prepare_order_level_model_data.R first."
   )
 }
@@ -67,8 +62,27 @@ validation_model_data <- read_csv(
   show_col_types = FALSE
 )
 
+history_indicator_fields <- c(
+  "has_90d_relationship_history",
+  "has_180d_relationship_history",
+  "has_365d_relationship_history",
+  "has_180d_supplier_history"
+)
+
 # CSV files do not retain R factor classes. Restore the expected field types.
 restore_field_types <- function(data) {
+  missing_history_indicators <- setdiff(
+    history_indicator_fields,
+    names(data)
+  )
+
+  if (length(missing_history_indicators) > 0L) {
+    stop(
+      "Required history indicators are missing: ",
+      paste(missing_history_indicators, collapse = ", ")
+    )
+  }
+
   data %>%
     mutate(
       late_delivery_target = factor(
@@ -78,13 +92,8 @@ restore_field_types <- function(data) {
           "late"
         )
       ),
-
       across(
-        c(
-          has_90d_relationship_history,
-          has_180d_relationship_history,
-          has_365d_relationship_history
-        ),
+        all_of(history_indicator_fields),
         ~ factor(
           .x,
           levels = c(
@@ -110,40 +119,34 @@ validation_model_data <- restore_field_types(
 
 stopifnot(
   nrow(training_model_data) > 0L,
-
   nrow(validation_model_data) > 0L,
-
   identical(
     names(training_model_data),
     names(validation_model_data)
   ),
-
   identical(
-    levels(
-      training_model_data$late_delivery_target
-    ),
-    c(
-      "on_time",
-      "late"
+    levels(training_model_data$late_delivery_target),
+    c("on_time", "late")
+  ),
+  identical(
+    levels(validation_model_data$late_delivery_target),
+    c("on_time", "late")
+  ),
+  !anyNA(training_model_data$late_delivery_target),
+  !anyNA(validation_model_data$late_delivery_target),
+  all(
+    vapply(
+      training_model_data[history_indicator_fields],
+      is.factor,
+      logical(1)
     )
   ),
-
-  identical(
-    levels(
-      validation_model_data$late_delivery_target
-    ),
-    c(
-      "on_time",
-      "late"
+  all(
+    vapply(
+      validation_model_data[history_indicator_fields],
+      is.factor,
+      logical(1)
     )
-  ),
-
-  !anyNA(
-    training_model_data$late_delivery_target
-  ),
-
-  !anyNA(
-    validation_model_data$late_delivery_target
   )
 )
 
@@ -187,27 +190,17 @@ logistic_recipe <- recipe(
   )
 
 # -------------------------------------------------------------------------
-# Define logistic regression baseline
+# Define and fit the logistic regression baseline
 # -------------------------------------------------------------------------
 
 logistic_model <- logistic_reg(
   mode = "classification"
 ) %>%
-  set_engine(
-    "glm"
-  )
+  set_engine("glm")
 
 logistic_workflow <- workflow() %>%
-  add_recipe(
-    logistic_recipe
-  ) %>%
-  add_model(
-    logistic_model
-  )
-
-# -------------------------------------------------------------------------
-# Fit using the chronological training period
-# -------------------------------------------------------------------------
+  add_recipe(logistic_recipe) %>%
+  add_model(logistic_model)
 
 logistic_fit <- fit(
   logistic_workflow,
@@ -226,53 +219,32 @@ validation_probabilities <- predict(
 
 validation_predictions <- bind_cols(
   validation_model_data %>%
-    select(
-      late_delivery_target
-    ),
+    select(late_delivery_target),
   validation_probabilities
 )
 
 stopifnot(
-  nrow(validation_predictions) ==
-    nrow(validation_model_data),
-
-  !anyNA(
-    validation_predictions$.pred_late
-  ),
-
+  nrow(validation_predictions) == nrow(validation_model_data),
+  !anyNA(validation_predictions$.pred_late),
   all(
     validation_predictions$.pred_late >= 0 &
       validation_predictions$.pred_late <= 1
   ),
-
   all(
     validation_predictions$.pred_on_time >= 0 &
       validation_predictions$.pred_on_time <= 1
   ),
-
   all(
     abs(
       validation_predictions$.pred_late +
-        validation_predictions$.pred_on_time -
-        1
-    ) <
-      0.000001
+        validation_predictions$.pred_on_time - 1
+    ) < 0.000001
   )
 )
 
 # -------------------------------------------------------------------------
 # Probability-based validation metrics
 # -------------------------------------------------------------------------
-#
-# The positive event is "late", which is the second outcome factor level.
-#
-# Higher is better:
-#   - ROC AUC
-#   - PR AUC
-#
-# Lower is better:
-#   - Log loss
-#   - Brier score
 
 probability_metrics <- metric_set(
   roc_auc,
@@ -316,13 +288,12 @@ classification_metrics <- metric_set(
   f_meas
 )
 
-validation_classification_metrics_050 <-
-  classification_metrics(
-    validation_predictions,
-    truth = late_delivery_target,
-    estimate = predicted_class_050,
-    event_level = "second"
-  )
+validation_classification_metrics_050 <- classification_metrics(
+  validation_predictions,
+  truth = late_delivery_target,
+  estimate = predicted_class_050,
+  event_level = "second"
+)
 
 validation_confusion_matrix_050 <- conf_mat(
   validation_predictions,
@@ -333,12 +304,6 @@ validation_confusion_matrix_050 <- conf_mat(
 # -------------------------------------------------------------------------
 # Compare alternative validation thresholds
 # -------------------------------------------------------------------------
-#
-# A 0.50 threshold may be too conservative because late deliveries represent
-# approximately 12 percent to 13 percent of the model population.
-#
-# Thresholds are evaluated only on the validation dataset. The final
-# threshold will be selected before the test dataset is examined.
 
 threshold_grid <- seq(
   from = 0.05,
@@ -346,10 +311,7 @@ threshold_grid <- seq(
   by = 0.025
 )
 
-evaluate_threshold <- function(
-  threshold,
-  prediction_data
-) {
+evaluate_threshold <- function(threshold, prediction_data) {
   threshold_predictions <- prediction_data %>%
     mutate(
       predicted_class = factor(
@@ -371,78 +333,51 @@ evaluate_threshold <- function(
         predicted_class == "late" &
           late_delivery_target == "late"
       ),
-
       false_positive = sum(
         predicted_class == "late" &
           late_delivery_target == "on_time"
       ),
-
       true_negative = sum(
         predicted_class == "on_time" &
           late_delivery_target == "on_time"
       ),
-
       false_negative = sum(
         predicted_class == "on_time" &
           late_delivery_target == "late"
       ),
-
-      alerts = sum(
-        predicted_class == "late"
-      ),
-
-      alert_rate = mean(
-        predicted_class == "late"
-      )
+      alerts = sum(predicted_class == "late"),
+      alert_rate = mean(predicted_class == "late")
     )
 
   threshold_metrics <- tibble(
     threshold = threshold,
-
     accuracy = accuracy_vec(
-      truth =
-        threshold_predictions$late_delivery_target,
-      estimate =
-        threshold_predictions$predicted_class
+      truth = threshold_predictions$late_delivery_target,
+      estimate = threshold_predictions$predicted_class
     ),
-
     balanced_accuracy = bal_accuracy_vec(
-      truth =
-        threshold_predictions$late_delivery_target,
-      estimate =
-        threshold_predictions$predicted_class,
+      truth = threshold_predictions$late_delivery_target,
+      estimate = threshold_predictions$predicted_class,
       event_level = "second"
     ),
-
     recall = sens_vec(
-      truth =
-        threshold_predictions$late_delivery_target,
-      estimate =
-        threshold_predictions$predicted_class,
+      truth = threshold_predictions$late_delivery_target,
+      estimate = threshold_predictions$predicted_class,
       event_level = "second"
     ),
-
     specificity = spec_vec(
-      truth =
-        threshold_predictions$late_delivery_target,
-      estimate =
-        threshold_predictions$predicted_class,
+      truth = threshold_predictions$late_delivery_target,
+      estimate = threshold_predictions$predicted_class,
       event_level = "second"
     ),
-
     precision = precision_vec(
-      truth =
-        threshold_predictions$late_delivery_target,
-      estimate =
-        threshold_predictions$predicted_class,
+      truth = threshold_predictions$late_delivery_target,
+      estimate = threshold_predictions$predicted_class,
       event_level = "second"
     ),
-
     f1_score = f_meas_vec(
-      truth =
-        threshold_predictions$late_delivery_target,
-      estimate =
-        threshold_predictions$predicted_class,
+      truth = threshold_predictions$late_delivery_target,
+      estimate = threshold_predictions$predicted_class,
       event_level = "second"
     )
   )
@@ -457,166 +392,89 @@ validation_threshold_summary <- bind_rows(
   lapply(
     threshold_grid,
     evaluate_threshold,
-    prediction_data =
-      validation_predictions
+    prediction_data = validation_predictions
   )
-)
-
-# Add a simple threshold-ranking measure.
-#
-# This does not automatically select the final business threshold. It helps
-# identify thresholds that balance recall and specificity.
-validation_threshold_summary <-
-  validation_threshold_summary %>%
+) %>%
   mutate(
-    youden_index =
-      recall +
-      specificity -
-      1
+    youden_index = recall + specificity - 1
   ) %>%
-  arrange(
-    threshold
-  )
+  arrange(threshold)
 
-best_balanced_threshold <-
-  validation_threshold_summary %>%
+best_balanced_threshold <- validation_threshold_summary %>%
   filter(
-    balanced_accuracy ==
-      max(
-        balanced_accuracy,
-        na.rm = TRUE
-      )
+    balanced_accuracy == max(
+      balanced_accuracy,
+      na.rm = TRUE
+    )
   ) %>%
-  slice(
-    1
-  )
+  slice(1)
 
-best_f1_threshold <-
-  validation_threshold_summary %>%
+best_f1_threshold <- validation_threshold_summary %>%
   filter(
-    f1_score ==
-      max(
-        f1_score,
-        na.rm = TRUE
-      )
+    f1_score == max(
+      f1_score,
+      na.rm = TRUE
+    )
   ) %>%
-  slice(
-    1
-  )
+  slice(1)
 
 # -------------------------------------------------------------------------
 # Print validation results
 # -------------------------------------------------------------------------
 
+cat("\nORDER-LEVEL LOGISTIC REGRESSION BASELINE\n")
 cat(
-  "\nORDER-LEVEL LOGISTIC REGRESSION BASELINE\n"
-)
-
-cat(
-  "\nTraining records:",
-  format(
-    nrow(training_model_data),
-    big.mark = ","
-  ),
+  "\nTraining predictors:",
+  ncol(training_model_data) - 1L,
   "\n"
 )
-
+cat(
+  "Training records:",
+  format(nrow(training_model_data), big.mark = ","),
+  "\n"
+)
 cat(
   "Validation records:",
-  format(
-    nrow(validation_model_data),
-    big.mark = ","
-  ),
+  format(nrow(validation_model_data), big.mark = ","),
   "\n"
 )
-
 cat(
   "Training late-delivery rate:",
   scales::percent(
-    mean(
-      training_model_data$
-        late_delivery_target == "late"
-    ),
+    mean(training_model_data$late_delivery_target == "late"),
     accuracy = 0.1
   ),
   "\n"
 )
-
 cat(
   "Validation late-delivery rate:",
   scales::percent(
-    mean(
-      validation_model_data$
-        late_delivery_target == "late"
-    ),
+    mean(validation_model_data$late_delivery_target == "late"),
     accuracy = 0.1
   ),
   "\n"
 )
 
-cat(
-  "\nPROBABILITY METRICS\n"
-)
+cat("\nPROBABILITY METRICS\n")
+print(validation_probability_metrics, n = Inf)
 
-print(
-  validation_probability_metrics,
-  n = Inf
-)
+cat("\nCLASSIFICATION METRICS AT 0.50\n")
+print(validation_classification_metrics_050, n = Inf)
 
-cat(
-  "\nCLASSIFICATION METRICS AT 0.50\n"
-)
+cat("\nCONFUSION MATRIX AT 0.50\n")
+print(validation_confusion_matrix_050)
 
-print(
-  validation_classification_metrics_050,
-  n = Inf
-)
+cat("\nPREDICTED LATE-PROBABILITY SUMMARY\n")
+print(summary(validation_predictions$.pred_late))
 
-cat(
-  "\nCONFUSION MATRIX AT 0.50\n"
-)
+cat("\nVALIDATION THRESHOLD COMPARISON\n")
+print(validation_threshold_summary, n = Inf, width = Inf)
 
-print(
-  validation_confusion_matrix_050
-)
+cat("\nTHRESHOLD WITH HIGHEST BALANCED ACCURACY\n")
+print(best_balanced_threshold, width = Inf)
 
-cat(
-  "\nPREDICTED LATE-PROBABILITY SUMMARY\n"
-)
-
-print(
-  summary(
-    validation_predictions$.pred_late
-  )
-)
-
-cat(
-  "\nVALIDATION THRESHOLD COMPARISON\n"
-)
-
-print(
-  validation_threshold_summary,
-  n = Inf,
-  width = Inf
-)
-
-cat(
-  "\nTHRESHOLD WITH HIGHEST BALANCED ACCURACY\n"
-)
-
-print(
-  best_balanced_threshold,
-  width = Inf
-)
-
-cat(
-  "\nTHRESHOLD WITH HIGHEST F1 SCORE\n"
-)
-
-print(
-  best_f1_threshold,
-  width = Inf
-)
+cat("\nTHRESHOLD WITH HIGHEST F1 SCORE\n")
+print(best_f1_threshold, width = Inf)
 
 # -------------------------------------------------------------------------
 # Save local model artifacts and validation results
@@ -680,12 +538,15 @@ write_csv(
 message(
   "Order-level logistic regression baseline completed successfully."
 )
-
+message(
+  "The supplier-history indicator was restored as a categorical predictor."
+)
 message(
   "The final test dataset was not loaded or evaluated."
 )
-
 message(
-  "The validation threshold comparison is exploratory and does not yet lock ",
-  "the final operating threshold."
+  paste(
+    "The validation threshold comparison is exploratory and does not yet",
+    "lock the final operating threshold."
+  )
 )

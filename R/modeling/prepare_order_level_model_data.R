@@ -2,11 +2,11 @@
 #
 # Selects predictors for the purchase-order late-delivery probability model.
 #
-# The probability model uses order characteristics, historical delivery
-# performance, supplier workload, and promised-delivery seasonality.
+# The probability model uses current-order characteristics, supplier-material
+# delivery history, supplier-wide delivery history, supplier workload, and
+# promised-delivery seasonality.
 #
 # Identifiers, future outcomes, and operational-impact fields are excluded.
-#
 # Missing-value treatment and categorical encoding will be learned later
 # using only the chronological training dataset.
 
@@ -79,6 +79,7 @@ outcome_field <- "late_delivery_target"
 predictor_fields <- c(
   # Current purchase-order characteristics
   "planned_lead_time_days",
+  "lead_time_pressure_days",
   "order_size_ratio",
 
   # Promised-delivery seasonality
@@ -90,22 +91,22 @@ predictor_fields <- c(
   "completed_order_count_180d",
   "completed_order_count_365d",
 
-  # Historical purchase quantities
+  # Historical supplier-material purchase quantities
   "historical_quantity_90d",
   "historical_quantity_180d",
   "historical_quantity_365d",
 
-  # Historical delivery reliability
+  # Historical supplier-material delivery reliability
   "on_time_rate_90d",
   "on_time_rate_180d",
   "on_time_rate_365d",
 
-  # Historical quantity-weighted lateness
+  # Historical supplier-material quantity-weighted lateness
   "late_quantity_rate_90d",
   "late_quantity_rate_180d",
   "late_quantity_rate_365d",
 
-  # Historical delay severity and consistency
+  # Historical supplier-material delay severity and consistency
   "average_late_days_90d",
   "average_late_days_180d",
   "delivery_variability_180d",
@@ -113,17 +114,32 @@ predictor_fields <- c(
   "recent_late_order_count_90d",
   "days_since_last_completed_delivery",
 
+  # Focused supplier-wide delivery history
+  #
+  # These fields pool completed deliveries across all materials purchased
+  # from the supplier. The 180-day window provides a stable recent view,
+  # while the 90-day late-order count captures short-term deterioration.
+  "supplier_completed_order_count_180d",
+  "supplier_on_time_rate_180d",
+  "supplier_late_quantity_rate_180d",
+  "supplier_average_late_days_180d",
+  "supplier_delivery_variability_180d",
+  "supplier_recent_late_order_count_90d",
+  "supplier_days_since_last_completed_delivery",
+
   # Supplier workload visible when the order is created
   "supplier_open_order_count",
   "supplier_open_order_quantity",
   "supplier_recent_order_count_90d",
   "supplier_recent_order_quantity_90d",
+  "workload_pressure_90d",
   "supplier_average_open_order_size_ratio",
 
   # Cold-start and limited-history indicators
   "has_90d_relationship_history",
   "has_180d_relationship_history",
-  "has_365d_relationship_history"
+  "has_365d_relationship_history",
+  "has_180d_supplier_history"
 )
 
 # Fields retained in the full scoring dataset for reporting but excluded from
@@ -175,6 +191,13 @@ date_and_administrative_fields <- c(
   "promised_delivery_month"
 )
 
+history_indicator_fields <- c(
+  "has_90d_relationship_history",
+  "has_180d_relationship_history",
+  "has_365d_relationship_history",
+  "has_180d_supplier_history"
+)
+
 # -------------------------------------------------------------------------
 # Prepare one chronological split
 # -------------------------------------------------------------------------
@@ -217,10 +240,8 @@ prepare_model_split <- function(data) {
       ),
 
       across(
-        c(
-          has_90d_relationship_history,
-          has_180d_relationship_history,
-          has_365d_relationship_history
+        all_of(
+          history_indicator_fields
         ),
         ~ factor(
           .x,
@@ -279,7 +300,17 @@ stopifnot(
     nrow(validation_data),
 
   nrow(test_model_data) ==
-    nrow(test_data)
+    nrow(test_data),
+
+  all(
+    predictor_fields %in%
+      names(training_model_data)
+  ),
+
+  all(
+    history_indicator_fields %in%
+      names(training_model_data)
+  )
 )
 
 prohibited_fields <- c(
@@ -483,6 +514,10 @@ print(
 
 message(
   "Created order-level probability-model datasets."
+)
+
+message(
+  "Focused supplier-level delivery-history predictors were added."
 )
 
 message(
