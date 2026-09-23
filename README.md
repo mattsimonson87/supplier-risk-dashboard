@@ -20,9 +20,11 @@ mitigation.
 - Generate reproducible synthetic supplier and procurement data
 - Validate and integrate multiple supply chain datasets
 - Engineer time-aware supplier performance features
-- Compare logistic regression and XGBoost models
-- Evaluate performance using out-of-time validation
-- Explain global and individual predictions
+- Use a linear probability model to describe conditional associations
+- Compare logistic regression and XGBoost predictive performance
+- Evaluate model performance using out-of-time validation
+- Explain global and individual predictions using marginal effects,
+  permutation importance, and SHAP values
 - Prioritize risks using probability and business impact
 - Present results through an interactive Shiny application
 - Explore a Snowflake data workflow if time permits
