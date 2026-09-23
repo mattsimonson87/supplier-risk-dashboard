@@ -93,12 +93,30 @@ The project will generate:
 
 ## Modeling Approach
 
-The project will compare:
+The project will use complementary models for interpretation and prediction:
 
-1. Logistic regression as an interpretable baseline
-2. XGBoost as the primary nonlinear model
+1. A linear probability model as an explanatory benchmark
+2. Logistic regression as an interpretable probability-model baseline
+3. XGBoost as the primary nonlinear predictive model
 
-Models will be evaluated using an out-of-time validation strategy.
+The linear probability model will use a concise, nonredundant predictor set
+and heteroskedasticity-robust standard errors. Its coefficients will be used
+to describe conditional associations in percentage-point terms.
+
+Logistic regression and XGBoost will be compared using out-of-time
+validation. Primary evaluation measures will include ROC AUC,
+precision-recall AUC, log loss, and Brier score.
+
+Logistic regression results will also be interpreted using odds ratios,
+average marginal effects, and selected probability contrasts expressed in
+the original business units.
+
+XGBoost explanations will use held-out permutation importance to assess
+global predictive contribution and SHAP values to explain individual
+purchase-order predictions.
+
+Model explanations will describe predictive associations and conditional
+relationships. They will not be presented as estimates of causal effects.
 
 ## Data Approach
 
@@ -118,7 +136,9 @@ The first version will include:
 - Purchase-order and delivery history
 - Purchase-order-level scoring records
 - Time-aware historical delivery-performance features
-- Logistic regression and XGBoost model evaluation
+- Linear probability, logistic regression, and XGBoost model evaluation
+- Average marginal effects and probability contrasts for interpretable models
+- Global and purchase-order-level model explanations
 - A separate operational impact framework
 - Monthly inventory and demand snapshots
 - An interactive Shiny and Plotly application
